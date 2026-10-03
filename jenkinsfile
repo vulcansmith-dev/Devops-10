@@ -1,0 +1,83 @@
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME = 'yourusername/my-application'
+        IMAGE_TAG  = "${BUILD_NUMBER}"
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/yourusername/my-application.git'
+            }
+        }
+
+        stage('Build Application') {
+            steps {
+                echo 'Building application...'
+
+                // Example for a Node.js application
+                sh 'npm install'
+                sh 'npm test'
+                sh 'npm run build'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo 'Building Docker image...'
+
+                sh """
+                    docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+                """
+            }
+        }
+
+        stage('Tag Docker Image') {
+            steps {
+                echo 'Tagging Docker image...'
+
+                sh """
+                    docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest
+                """
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                echo 'Pushing Docker image to Docker Hub...'
+
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USERNAME',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )
+                ]) {
+                    sh '''
+                        echo "$DOCKER_PASSWORD" | docker login \
+                            -u "$DOCKER_USERNAME" \
+                            --password-stdin
+
+                        docker push ${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${IMAGE_NAME}:latest
+
+                        docker logout
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Docker image successfully pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
+        }
+
+        failure {
+            echo 'Pipeline failed. Docker image was not published.'
+        }
+    }
+}
